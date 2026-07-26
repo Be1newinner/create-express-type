@@ -1,36 +1,54 @@
 {
   "name": "create-express-type",
-  "version": "2.2.0",
-  "main": "index.js",
+  "version": "3.0.0",
+  "description": "Scaffold a production-ready TypeScript + Express.js project in seconds.",
+  "main": "dist/cli.js",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.cli.json",
+    "dev": "tsc -p tsconfig.cli.json --watch",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"No tests for CLI yet\" && exit 0"
   },
   "bin": {
-    "create-express-type": "index.js"
+    "create-express-type": "dist/cli.js"
   },
   "keywords": [
     "express",
     "typescript",
     "express-type",
-    "nest",
+    "scaffold",
+    "boilerplate",
     "node",
     "backend",
     "api",
-    "server"
+    "server",
+    "starter",
+    "create-app"
   ],
   "homepage": "https://github.com/Be1newinner/create-express-ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Be1newinner/create-express-ts.git"
+  },
   "author": "be1newinner",
   "license": "ISC",
-  "description": "This package is meant for creating a new project with typescript and express js.",
   "dependencies": {
-    "command-line-args": "^6.0.1",
-    "node-fetch": "2.6.1",
+    "@clack/prompts": "^0.9.0",
     "ora": "^8.1.1",
     "yauzl": "2.10.0"
   },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/yauzl": "^2.10.3",
+    "typescript": "^5.9.3"
+  },
   "files": [
-    "index.js",
-    "package.json"
+    "dist/cli.js",
+    "package.json",
+    "README.md"
   ]
 }

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-typecheck-build:
+    name: Lint, Type Check & Build
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: packages/express-type/package-lock.json
+
+      - name: Install dependencies
+        working-directory: packages/express-type
+        run: npm ci
+
+      - name: Type check
+        working-directory: packages/express-type
+        run: npm run check
+
+      - name: Lint
+        working-directory: packages/express-type
+        run: npm run lint
+
+      - name: Build
+        working-directory: packages/express-type
+        run: npm run build
+
+      - name: Run tests
+        working-directory: packages/express-type
+        run: npm test
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-secret-that-is-at-least-32-characters-long
+          PORT: 8005
