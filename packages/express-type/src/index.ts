@@ -7,6 +7,7 @@ import { apiRouter } from "@/routes/index.js";
 import { errorHandler } from "@/middlewares/errorHandler.js";
 import { notFoundHandler } from "@/middlewares/notFound.js";
 import { globalRateLimiter } from "@/middlewares/rateLimiter.js";
+// __DB_IMPORT__
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -49,6 +50,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // ─── Server Start ─────────────────────────────────────────────────────────────
+// __DB_CONNECT__
 const server = app.listen(env.PORT, () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT} [${env.NODE_ENV}]`);
   console.log(`   Health check: http://localhost:${env.PORT}/health`);
@@ -58,10 +60,12 @@ const server = app.listen(env.PORT, () => {
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
 const shutdown = (signal: string): void => {
   console.log(`\n${signal} received — shutting down gracefully...`);
-  server.close(() => {
-    console.log("✅ HTTP server closed.");
-    // Add database disconnection here (e.g. await prisma.$disconnect())
-    process.exit(0);
+  server.close((): void => {
+    void (async (): Promise<void> => {
+      console.log("✅ HTTP server closed.");
+      // __DB_DISCONNECT__
+      process.exit(0);
+    })();
   });
 
   // Force exit if server doesn't close within 10s
