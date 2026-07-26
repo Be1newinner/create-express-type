@@ -26,8 +26,8 @@ const pkg = JSON.parse(readFileSync(path.join(__dirname, "..", "package.json"), 
 };
 
 const REPO_ZIP_URL =
-  "https://github.com/Be1newinner/create-express-ts/archive/refs/heads/main.zip";
-const REPO_SUBDIR = "create-express-ts-main/packages/express-type/";
+  "https://github.com/Be1newinner/create-express-type/archive/refs/heads/main.zip";
+const REPO_SUBDIR = "create-express-type-main/packages/express-type/";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ async function main(): Promise<void> {
         installCmd,
         `  cp .env.example .env   # Add your secrets`,
         `  ${packageManager} run dev          # Start the dev server\n`,
-        `  🌐  Docs: https://github.com/Be1newinner/create-express-ts`,
+        `  🌐  Docs: https://github.com/Be1newinner/create-express-type`,
       ]
         .filter(Boolean)
         .join("\n")

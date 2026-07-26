@@ -10,7 +10,7 @@ Please be respectful and welcoming to all members of our community. We expect al
 
 ### **1. Report Bugs or Suggest Features**
 
-- **Bugs:** If you find a bug, please check the [Issues page](https://github.com/Be1newinner/create-express-ts/issues) to see if it has already been reported. If not, open a new issue with a clear title and description. Include steps to reproduce the bug and details about your environment.
+- **Bugs:** If you find a bug, please check the [Issues page](https://github.com/Be1newinner/create-express-type/issues) to see if it has already been reported. If not, open a new issue with a clear title and description. Include steps to reproduce the bug and details about your environment.
 - **Features:** If you have an idea for a new feature, please open an issue to discuss it before you start working on it. This helps ensure that the feature aligns with the project's goals.
 
 ### **2. Setup Your Local Environment**
@@ -19,8 +19,8 @@ Please be respectful and welcoming to all members of our community. We expect al
 2.  **Clone Your Fork:** Clone your forked repository to your local machine.
 
     ```bash
-    git clone https://github.com/Be1newinner/create-express-ts/.git
-    cd create-express-ts
+    git clone https://github.com/Be1newinner/create-express-type/.git
+    cd create-express-type
     ```
 
 3.  **Install Dependencies:** Install the required dependencies to run and test the project.
