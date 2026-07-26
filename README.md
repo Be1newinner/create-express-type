@@ -1,177 +1,119 @@
-# Express.js and TypeScript Quickstart Template
+# create-express-type
 
-Welcome to the **Express.js and TypeScript Quickstart Template**! This repository provides a clean, scalable, and production-ready boilerplate for building web applications using **Express.js** and **TypeScript**.
+> Scaffold a production-ready TypeScript + Express.js project in seconds.
 
-## Table of Contents
+[![npm version](https://img.shields.io/npm/v/create-express-type.svg?color=blue)](https://www.npmjs.com/package/create-express-type)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-1. [Features](#features)
-2. [Requirements](#requirements)
-3. [Installation](#installation)
-4. [Project Structure](#project-structure)
-5. [Usage](#usage)
-6. [Scripts](#scripts)
-7. [Best Practices](#best-practices)
-8. [Contributing](#contributing)
-9. [License](#license)
+`create-express-type` is an interactive CLI scaffolding tool that builds modern, secure, and production-ready Express.js + TypeScript APIs with sensible defaults.
 
 ---
 
-## Features
+## 🌟 Key Features
 
-- 🚀 **TypeScript Support**: Strong type-checking for safer and more maintainable code.
-- 🌟 **Express.js Integration**: Lightweight and robust web framework.
-- 🔧 **Developer Tools**: Pre-configured with **ESLint**, **Prettier**, and **Nodemon**.
-- 📂 **Scalable Folder Structure**: Organized for small to large applications.
-- 🛡️ **Error Handling**: Middleware for consistent error responses.
-- 📦 **Dependency Management**: Minimal yet extensible setup.
-
----
-
-## Requirements
-
-Ensure you have the following installed:
-
-- **Node.js**: v14 or higher
-- **npm** or **yarn**: Latest version
+- 🚀 **TypeScript First**: Strict type-checking with ESM modules and Node 18+ support.
+- ⚡ **Interactive CLI Wizard**: Built with `@clack/prompts` for smooth DX.
+- 🗄️ **Database Support**: Built-in setup for **PostgreSQL + Prisma** or **MongoDB + Mongoose** (or pure Express).
+- 🪵 **Structured Logging**: Powered by **Pino** and **Pino-HTTP** (pretty-printed in dev, JSON in prod).
+- 🆔 **Distributed Tracing**: Automatic `X-Request-Id` UUID generation and header propagation.
+- 🛡️ **Production Security**: Pre-configured **Helmet**, **CORS**, **Express Rate Limit**, and Zod payload limits.
+- 🗜️ **Gzip Compression**: Optimized HTTP responses out of the box.
+- 🔍 **Fail-Fast Environment Validation**: Zod-validated environment schema at application startup.
+- 🎨 **Code Quality Setup**: **ESLint** (v9 flat config), **Prettier**, **Husky**, and **lint-staged**.
+- 🧪 **Test Suite**: Integration and unit testing ready with **Vitest** and **Supertest**.
+- 🐙 **Git Ready**: Auto `git init`, initial commit, and template ZIP caching.
 
 ---
 
-## Installation
+## 🚀 Quickstart
 
-### 1. Create a New Project
-
-Using npm:
+Run `create-express-type` with any package manager:
 
 ```bash
-npm create express-type project-name
+# Using npx (npm)
+npx create-express-type my-express-api
+
+# Using pnpm
+pnpm create express-type my-express-api
+
+# Using yarn
+yarn create express-type my-express-api
+
+# Using bun
+bun create express-type my-express-api
 ```
 
-Or using yarn:
+---
+
+## 💻 CLI Options & Non-Interactive Mode
+
+### Options
+
+| Flag | Description |
+| --- | --- |
+| `-y`, `--yes` | Skip interactive prompts and use default configuration |
+| `-v`, `--version` | Print CLI version |
+| `-h`, `--help` | Display help menu |
+
+### Non-Interactive Usage (CI / Power Users)
 
 ```bash
-yarn create express-type project-name
+npx create-express-type my-api --yes
 ```
 
 ---
 
-### 2. Install Dependencies
-
-Using npm:
-
-```bash
-npm install
-```
-
-Or using yarn:
-
-```bash
-yarn install
-```
-
----
-
-## Project Structure
-
-The template follows a modular and scalable folder structure:
+## 🗂️ Scaffolded Project Structure
 
 ```
-express-ts-template/
-├── eslint.config.js
-├── LICENSE
-├── loader.mjs
-├── nodemon.json
-├── package.json
-├── package-lock.json
-├── README.md
-├── src
-│   ├── controllers
-│   │   └── sample.ts
-│   ├── index.ts
-│   ├── middlewares
-│   │   └── sample.ts
-│   ├── models
-│   │   └── sample.ts
-│   └── routes
-│       └── sample.ts
-└── tsconfig.json
+my-express-api/
+├── .husky/              # Git pre-commit hooks (lint-staged)
+├── .vscode/             # Recommended extensions & format-on-save settings
+├── __tests__/           # Integration and unit tests with Vitest & Supertest
+├── prisma/              # Prisma schema & migrations (if Prisma selected)
+├── src/
+│   ├── config/          # Zod environment variable schema & validation
+│   ├── features/        # Feature-based modules (auth, product)
+│   │   ├── auth/        # Auth controller, service, route, middleware, model
+│   │   └── product/     # Product CRUD controller, service, route, middleware
+│   ├── lib/             # Pino logger, DB clients (Prisma / Mongoose)
+│   ├── middlewares/     # Global error handler, rate limiter, requestId, 404
+│   ├── routes/          # Central API router index (/api/v1)
+│   ├── utils/           # Typed API response helpers & utility functions
+│   └── index.ts         # Main Express application entry point
+├── .env.example         # Documented environment variable template
+├── docker-compose.yml   # PostgreSQL + Redis local dev services
+├── eslint.config.js     # Flat ESLint config
+├── prettier.config.js   # Prettier config
+├── vitest.config.ts     # Vitest configuration
+└── package.json
 ```
 
 ---
 
-## Usage
+## 📜 Available Scripts in Scaffolded Project
 
-### 1. Development Mode
-
-Run the app with **Nodemon** for auto-reloading:
-
-```bash
-npm run dev
-```
-
-Access the application at: [http://localhost:8000](http://localhost:8000)
-
-### 2. Build for Production
-
-Compile the TypeScript files to JavaScript:
-
-```bash
-npm run build
-```
-
-Run the compiled app:
-
-```bash
-npm start
-```
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start development server with hot-reload (`tsx watch`) |
+| `npm run check` | Run TypeScript type check (`tsc --noEmit`) |
+| `npm run lint` | Run ESLint across `src/` |
+| `npm run lint:fix` | Automatically fix ESLint warnings and errors |
+| `npm run build` | Bundle application for production using `esbuild` |
+| `npm run start` | Run compiled production build from `dist/index.js` |
+| `npm run test` | Run test suite with Vitest |
+| `npm run db:push` | Sync Prisma schema with database (if Prisma selected) |
+| `npm run db:studio` | Open Prisma Studio UI (if Prisma selected) |
 
 ---
 
-## Scripts
+## 🤝 Contributing
 
-- `npm run dev`: Start the app in development mode with Nodemon.
-- `npm run build`: Compile TypeScript to JavaScript.
-- `npm start`: Run the compiled app in production mode.
-- `npm run lint`: Check for linting issues.
-- `npm run lint:fix`: Fix linting issues automatically.
+Contributions are welcome! Please check the [Contributing Guide](CONTRIBUTE.md) for local setup and guidelines.
 
 ---
 
-## Best Practices
+## 📄 License
 
-- **Type Annotations**: Use TypeScript’s powerful type system to avoid runtime errors.
-- **Folder Organization**: Keep your business logic separate from your route definitions.
-- **Environment Variables**: Use `.env` files for managing secrets (e.g., database URLs).
-- **Error Handling**: Implement consistent error responses using middleware.
-- **Testing**: Add unit and integration tests using a framework like Jest.
-
----
-
-## Contributing
-
-We welcome contributions! If you’d like to enhance this template:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Submit a pull request with a detailed explanation of your changes.
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-## Keywords (SEO)
-
-- Express.js TypeScript Template
-- Express.js Boilerplate
-- TypeScript Node.js Starter
-- Scalable Express.js App
-- Express TypeScript Quickstart
-
----
-
-## Connect
-
-For more templates and tutorials, check out my YouTube channel: [Asaan Hai Coding](https://www.youtube.com/@asaan_hai_coding).
+[ISC License](LICENSE) © [be1newinner](https://github.com/Be1newinner)

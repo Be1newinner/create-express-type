@@ -1,176 +1,158 @@
-# Express.js and TypeScript Quickstart Template
+# Production-Ready TypeScript + Express.js API Boilerplate
 
-Welcome to the **Express.js and TypeScript Quickstart Template**! This repository provides a clean, scalable, and production-ready boilerplate for building web applications using **Express.js** and **TypeScript**.
-
-## Table of Contents
-
-1. [Features](#features)
-2. [Requirements](#requirements)
-3. [Installation](#installation)
-4. [Project Structure](#project-structure)
-5. [Usage](#usage)
-6. [Scripts](#scripts)
-7. [Best Practices](#best-practices)
-8. [Contributing](#contributing)
-9. [License](#license)
+> Clean, secure, and modular Express 5 + TypeScript boilerplate with Pino logging, Zod validation, security headers, rate limiting, and Vitest testing setup.
 
 ---
 
-## Features
+## 🌟 Included Features
 
-- 🚀 **TypeScript Support**: Strong type-checking for safer and more maintainable code.
-- 🌟 **Express.js Integration**: Lightweight and robust web framework.
-- 🔧 **Developer Tools**: Pre-configured with **ESLint**, **Prettier**, and **Nodemon**.
-- 📂 **Scalable Folder Structure**: Organized for small to large applications.
-- 🛡️ **Error Handling**: Middleware for consistent error responses.
-- 📦 **Dependency Management**: Minimal yet extensible setup.
-
----
-
-## Requirements
-
-Ensure you have the following installed:
-
-- **Node.js**: v14 or higher
-- **npm** or **yarn**: Latest version
+- 🚀 **Express.js 5 & TypeScript**: Built on modern Node.js (>=18) with full ESM support.
+- 🪵 **Structured Pino Logging**: Pino logger with colorized pretty output in development and JSON in production.
+- 🆔 **Request Tracing**: `X-Request-Id` UUID middleware attached to all requests & responses.
+- 🛡️ **Production Security**: Security headers (`helmet`), CORS configuration, global & auth rate limiters (`express-rate-limit`), and payload body limits.
+- 🗜️ **Response Compression**: Built-in Gzip compression (`compression`).
+- 🔍 **Fail-Fast Environment Config**: Zod-validated environment schema (`src/config/env.ts`) that halts server boot if variables are missing or invalid.
+- 📂 **Modular Architecture**: Feature-sliced structure (`auth`, `product`) separating routes, controllers, services, models, and middlewares.
+- 💥 **Robust Error Handling**: Custom `AppError` operational error class, `asyncHandler` wrapper, global error handler, and JSON 404 handler.
+- 🧪 **Vitest & Supertest Integration**: Pre-configured test runner with sample integration tests.
+- 🎨 **Code Quality Pipeline**: ESLint (v9 flat config), Prettier, Husky pre-commit hooks, and `lint-staged`.
+- 🧰 **VS Code Workspace**: Includes settings for format-on-save, ESLint auto-fix, and extension recommendations.
 
 ---
 
+## 📂 Project Directory Layout
 
-## Create new project using this template
-
-```bash
-npm create express-type project-name
-cd cart
-npm run dev
+```
+express-ts-app/
+├── .husky/              # Pre-commit hook configurations
+├── .vscode/             # Recommended VS Code settings & extensions
+├── __tests__/           # Integration and unit tests
+│   ├── integration/     # API endpoint integration tests
+│   ├── unit/            # Unit tests
+│   └── setup.ts         # Vitest environment setup
+├── docker-compose.yml   # PostgreSQL & Redis container definitions
+├── esbuild.config.js     # Fast production bundler script
+├── eslint.config.js     # Flat ESLint rules
+├── prettier.config.js   # Code formatting rules
+├── vitest.config.ts     # Vitest configuration
+├── .env.example         # Environment variable template
+└── src/
+    ├── config/          # Environment configuration (env.ts)
+    ├── features/        # Modular feature domains
+    │   ├── auth/        # Authentication module (routes, controllers, services, models)
+    │   └── product/     # Product CRUD module
+    ├── lib/             # Pino logger instance (and DB clients if configured)
+    ├── middlewares/     # Global error handler, rate limiter, request ID, 404
+    ├── routes/          # Central API router registry (/api/v1)
+    ├── utils/           # Typed response helpers & utility functions
+    └── index.ts         # Server entry point & graceful shutdown
 ```
 
-## If you want to clone and modify this
+---
 
-### 1. Clone the Repository
+## 🚀 Quickstart
 
-```bash
-git clone https://github.com/Be1newinner/express-ts-template.git
-cd express-ts-template
-```
+### 1. Install Dependencies
 
-### 2. Install Dependencies
-
-Using npm:
 ```bash
 npm install
 ```
 
-Or using yarn:
+### 2. Configure Environment Variables
+
+Copy `.env.example` to `.env`:
+
 ```bash
-yarn install
+cp .env.example .env
 ```
 
----
+Ensure `JWT_SECRET` is set to a secure string (at least 32 characters).
 
-## Project Structure
-
-The template follows a modular and scalable folder structure:
-
-```
-express-ts-template/
-├── eslint.config.js
-├── LICENSE
-├── loader.mjs
-├── nodemon.json
-├── package.json
-├── package-lock.json
-├── README.md
-├── src
-│   ├── controllers
-│   │   └── sample.ts
-│   ├── index.ts
-│   ├── middlewares
-│   │   └── sample.ts
-│   ├── models
-│   │   └── sample.ts
-│   └── routes
-│       └── sample.ts
-└── tsconfig.json
-```
-
----
-
-## Usage
-
-### 1. Development Mode
-
-Run the app with **Nodemon** for auto-reloading:
+### 3. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-Access the application at: [http://localhost:8000](http://localhost:8000)
-
-### 2. Build for Production
-
-Compile the TypeScript files to JavaScript:
-
-```bash
-npm run build
-```
-
-Run the compiled app:
-
-```bash
-npm start
-```
+The API will be available at `http://localhost:8005`.
 
 ---
 
-## Scripts
+## 📜 NPM Scripts
 
-- `npm run dev`: Start the app in development mode with Nodemon.
-- `npm run build`: Compile TypeScript to JavaScript.
-- `npm start`: Run the compiled app in production mode.
-- `npm run lint`: Check for linting issues.
-- `npm run lint:fix`: Fix linting issues automatically.
-
----
-
-## Best Practices
-
-- **Type Annotations**: Use TypeScript’s powerful type system to avoid runtime errors.
-- **Folder Organization**: Keep your business logic separate from your route definitions.
-- **Environment Variables**: Use `.env` files for managing secrets (e.g., database URLs).
-- **Error Handling**: Implement consistent error responses using middleware.
-- **Testing**: Add unit and integration tests using a framework like Jest.
+| Script | Command | Description |
+| --- | --- | --- |
+| `npm run dev` | `tsx watch src/index.ts` | Development server with hot-reloading |
+| `npm run check` | `tsc --noEmit` | Type-check without emitting JavaScript |
+| `npm run lint` | `npx eslint src` | Check code for lint errors |
+| `npm run lint:fix` | `npx eslint src --fix` | Automatically fix lint issues |
+| `npm run build` | `node esbuild.config.js` | Compile production bundle into `dist/` |
+| `npm run start` | `node dist/index.js` | Run compiled production bundle |
+| `npm run test` | `vitest run` | Run Vitest test suite |
+| `npm run test:watch` | `vitest` | Run Vitest in watch mode |
+| `npm run test:coverage`| `vitest run --coverage` | Generate test coverage report |
 
 ---
 
-## Contributing
+## 🌐 API Routes Summary
 
-We welcome contributions! If you’d like to enhance this template:
+### Base Endpoints
 
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Submit a pull request with a detailed explanation of your changes.
+- `GET /health` — Application status, uptime, node environment, and DB connection status
 
----
+### Auth Endpoints (`/api/v1/auth`)
 
-## License
+- `POST /register` — Register a new user
+- `POST /login` — Authenticate and receive JWT token
+- `GET /me` — Get authenticated user profile (requires `Authorization: Bearer <token>`)
 
-This project is licensed under the [MIT License](LICENSE).
+### Product Endpoints (`/api/v1/products`)
 
----
-
-## Keywords (SEO)
-
-- Express.js TypeScript Template
-- Express.js Boilerplate
-- TypeScript Node.js Starter
-- Scalable Express.js App
-- Express TypeScript Quickstart
+- `GET /` — List products
+- `GET /:id` — Get product details
+- `POST /` — Create product (admin role required)
+- `PATCH /:id` — Update product (admin role required)
+- `DELETE /:id` — Remove product (admin role required)
 
 ---
 
-## Connect
+## 🗄️ Database Integration Guide
 
-For more templates and tutorials, check out my YouTube channel: [Asaan Hai Coding](https://www.youtube.com/@asaan_hai_coding).
+This boilerplate supports seamless database integration:
 
+### Using PostgreSQL + Prisma
+
+1. Install Prisma:
+   ```bash
+   npm install @prisma/client
+   npm install --save-dev prisma
+   ```
+2. Initialize Prisma:
+   ```bash
+   npx prisma init
+   ```
+3. Set `DATABASE_URL` in `.env` and `src/config/env.ts`.
+
+### Using MongoDB + Mongoose
+
+1. Install Mongoose:
+   ```bash
+   npm install mongoose
+   ```
+2. Set `MONGODB_URI` in `.env` and `src/config/env.ts`.
+
+---
+
+## 🔒 Security Best Practices Implemented
+
+1. **Structured Logging**: Sensitive fields are excluded from production log outputs.
+2. **Payload Protection**: Express JSON body parser is restricted to `10kb` to prevent payload flood attacks.
+3. **HTTP Security Headers**: `helmet` is enabled to enforce HSTS, X-Content-Type-Options, and X-XSS-Protection.
+4. **Rate Limiting**: `express-rate-limit` prevents brute-force attempts on sensitive auth routes and caps API traffic.
+5. **Operational Error Isolation**: Unhandled exceptions are masked in production to prevent stack trace leaks.
+
+---
+
+## 📄 License
+
+[ISC License](LICENSE)

@@ -1,4 +1,5 @@
 import { type Request, type Response, type NextFunction } from "express";
+import { logger } from "@/lib/logger.js";
 
 // ─── AppError ─────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export const errorHandler = (
 
   // Programmer errors / unhandled exceptions
   // Do NOT expose internals in production
-  console.error("💥 Unhandled error:", err);
+  logger.error({ err }, "💥 Unhandled error");
 
   res.status(500).json({
     success: false,
