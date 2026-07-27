@@ -32,7 +32,7 @@
   "homepage": "https://github.com/Be1newinner/create-express-type",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Be1newinner/create-express-type.git"
+    "url": "git+https://github.com/Be1newinner/create-express-type.git"
   },
   "author": "be1newinner",
   "license": "ISC",
