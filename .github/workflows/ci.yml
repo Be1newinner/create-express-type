@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
     branches: [main]
+  # Pushes to main run CI through release.yml, which publishes only if it passes
+  workflow_call:
 
 jobs:
   template:
