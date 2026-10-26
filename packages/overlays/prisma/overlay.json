@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "postgres"
+  ],
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "prisma": "^6.19.0"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "buildDependencies": [
+    "@prisma/client",
+    "@prisma/engines",
+    "prisma"
+  ]
+}

@@ -11,29 +11,36 @@ import { z } from "zod";
  *   2. Add it to `.env.example`
  *   3. Use it via `env.MY_VAR` throughout the app
  */
-const envSchema = z.object({
-  // Server
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().int().positive().default(8005),
+const envSchema = z
+  .object({
+    // Server
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    PORT: z.coerce.number().int().positive().default(8005),
 
-  // Security — JWT
-  JWT_SECRET: z
-    .string()
-    .min(32, "JWT_SECRET must be at least 32 characters for security"),
-  JWT_EXPIRES_IN: z.string().default("7d"),
+    // Security — JWT
+    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters for security"),
+    JWT_EXPIRES_IN: z.string().default("7d"),
 
-  // Security — CORS (comma-separated list of allowed origins)
-  ALLOWED_ORIGINS: z
-    .string()
-    .default("http://localhost:3000")
-    .transform((val) => val.split(",").map((o) => o.trim())),
+    // Security — CORS (comma-separated list of allowed origins)
+    ALLOWED_ORIGINS: z
+      .string()
+      .default("http://localhost:3000")
+      .transform((val) => val.split(",").map((o) => o.trim())),
 
-  // ── Add your own vars below ──────────────────────────────────────────────
-  // DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),
-  // REDIS_URL: z.string().url("REDIS_URL must be a valid URL").optional(),
-  // SMTP_HOST: z.string().optional(),
-  // SMTP_PORT: z.coerce.number().optional(),
-});
+    // API docs at /docs — defaults to on, except in production
+    API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
+
+    // ── Add your own vars below ──────────────────────────────────────────────
+    // REDIS_URL: z.string().url("REDIS_URL must be a valid URL").optional(),
+    // SMTP_HOST: z.string().optional(),
+    // SMTP_PORT: z.coerce.number().optional(),
+  })
+  .transform((vars) => ({
+    ...vars,
+    API_DOCS_ENABLED: vars.API_DOCS_ENABLED
+      ? vars.API_DOCS_ENABLED === "true"
+      : vars.NODE_ENV !== "production",
+  }));
 
 // Parse & validate at module load time — crashes loudly if anything is wrong
 const parsed = envSchema.safeParse(process.env);

@@ -29,12 +29,30 @@ export class AppError extends Error {
   }
 }
 
+// ─── ValidationError ──────────────────────────────────────────────────────────
+
+export interface ValidationIssue {
+  path: string;
+  message: string;
+}
+
+/** Thrown by the `validate()` middleware — responds 400 with every failing field */
+export class ValidationError extends AppError {
+  public readonly issues: ValidationIssue[];
+
+  constructor(issues: ValidationIssue[]) {
+    super("Validation failed", 400);
+    this.name = "ValidationError";
+    this.issues = issues;
+  }
+}
+
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 
 /**
  * Express global error-handling middleware.
  *
- * IMPORTANT: Must be registered LAST in index.ts (after all routes and 404 handler).
+ * IMPORTANT: Must be registered LAST in app.ts (after all routes and 404 handler).
  * The 4-parameter signature is what tells Express this is an error handler.
  */
 export const errorHandler = (
@@ -50,8 +68,16 @@ export const errorHandler = (
     res.status(err.statusCode).json({
       success: false,
       message: err.message,
+      ...(err instanceof ValidationError && { errors: err.issues }),
       ...(isDev && { stack: err.stack }),
     });
+    return;
+  }
+
+  // Client errors raised by Express itself (malformed JSON → 400, body too large → 413, ...)
+  const status = (err as { status?: unknown }).status;
+  if (typeof status === "number" && status >= 400 && status < 500) {
+    res.status(status).json({ success: false, message: err.message });
     return;
   }
 

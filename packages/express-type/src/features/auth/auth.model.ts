@@ -3,8 +3,11 @@
  *
  * 🔌 Database Integration:
  *   With Prisma:   Replace `User` with `import { User } from '@prisma/client';`
+ *   With Drizzle:  Replace `User` with `typeof users.$inferSelect` from src/db/schema.ts.
  *   With Mongoose: Create a Mongoose schema/model and export it instead.
  */
+import type { z } from "zod";
+import type { loginBody, registerBody } from "./auth.schema.js";
 
 // ─── Core Entity ──────────────────────────────────────────────────────────────
 
@@ -21,19 +24,13 @@ export interface User {
 export type UserRole = "user" | "admin";
 
 // ─── Data Transfer Objects (DTOs) ─────────────────────────────────────────────
+// Derived from the Zod schemas, so types and validation rules can't drift apart.
 
-/** Data required to register a new user */
-export type CreateUserDto = {
-  name: string;
-  email: string;
-  password: string; // Plain text — hashed in the service layer
-};
+/** Data required to register a new user (password is plain text — hashed in the service layer) */
+export type CreateUserDto = z.infer<typeof registerBody>;
 
 /** Data required to log in */
-export type LoginDto = {
-  email: string;
-  password: string;
-};
+export type LoginDto = z.infer<typeof loginBody>;
 
 /** User data safe to return in API responses (no password) */
 export type UserResponse = Omit<User, "password">;
