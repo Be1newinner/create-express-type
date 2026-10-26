@@ -7,45 +7,97 @@ on:
     branches: [main]
 
 jobs:
-  lint-typecheck-build:
-    name: Lint, Type Check & Build
+  template:
+    name: Template — Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        node-version: [20.x, 22.x, 24.x]
+
+    defaults:
+      run:
+        working-directory: packages/express-type
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
           cache-dependency-path: packages/express-type/package-lock.json
 
       - name: Install dependencies
-        working-directory: packages/express-type
         run: npm ci
 
       - name: Type check
-        working-directory: packages/express-type
         run: npm run check
 
       - name: Lint
-        working-directory: packages/express-type
         run: npm run lint
 
       - name: Build
-        working-directory: packages/express-type
         run: npm run build
 
       - name: Run tests
-        working-directory: packages/express-type
         run: npm test
-        env:
-          NODE_ENV: test
-          JWT_SECRET: ci-test-secret-that-is-at-least-32-characters-long
-          PORT: 8005
+
+      - name: Feature generator smoke test
+        run: |
+          npm run gen:feature -- order-item
+          npm run check
+          npm run lint
+          npm test
+
+  scaffold:
+    name: Scaffold — ${{ matrix.db }} (${{ matrix.pm }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [none, prisma, drizzle, mongoose]
+        pm: [npm]
+        include:
+          - db: prisma
+            pm: pnpm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        if: matrix.pm == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.x
+          cache: "npm"
+
+      - name: Build CLI
+        run: |
+          npm ci
+          npm run build
+
+      - name: Scaffold project
+        working-directory: ${{ runner.temp }}
+        run: node "$GITHUB_WORKSPACE/dist/cli.js" app --db ${{ matrix.db }} --pm ${{ matrix.pm }} --no-git --yes
+
+      - name: Check, lint, build & test the generated project
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          ${{ matrix.pm }} run check
+          ${{ matrix.pm }} run lint
+          ${{ matrix.pm }} run build
+          ${{ matrix.pm }} run test
+
+      - name: Build Docker image
+        working-directory: ${{ runner.temp }}/app
+        run: docker build -t app-${{ matrix.db }}-${{ matrix.pm }} .

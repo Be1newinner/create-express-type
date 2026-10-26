@@ -9,7 +9,7 @@ build({
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node18',
+  target: 'node20',
   format: 'esm',
   outfile: 'dist/index.js',
   sourcemap: true,

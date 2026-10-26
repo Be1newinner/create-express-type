@@ -1,0 +1,9 @@
+{
+  "env": [
+    {
+      "name": "DATABASE_URL",
+      "schema": "z.string().url(\"DATABASE_URL must be a valid URL\")",
+      "example": "postgresql://postgres:postgres@localhost:5432/mydb"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
   "main": "dist/cli.js",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc -p tsconfig.cli.json",
@@ -37,18 +37,20 @@
   "author": "be1newinner",
   "license": "ISC",
   "dependencies": {
-    "@clack/prompts": "^0.9.0",
-    "ora": "^8.1.1",
-    "yauzl": "2.10.0"
+    "@clack/prompts": "^0.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/yauzl": "^2.10.3",
     "typescript": "^5.9.3"
   },
   "files": [
     "dist/cli.js",
-    "package.json",
-    "README.md"
+    "packages/express-type",
+    "packages/overlays",
+    "!packages/**/node_modules",
+    "!packages/**/dist",
+    "!packages/**/coverage",
+    "!packages/**/.env",
+    "!packages/express-type/package-lock.json"
   ]
 }

@@ -1,8 +1,7 @@
 node_modules
+dist
+coverage
 .env
 .env.local
 .env.production
 .env.development
-dist
-*-lock.yaml
-*-lock.json

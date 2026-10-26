@@ -1,34 +1,10 @@
 import { type Request, type Response } from "express";
-import { z } from "zod";
 import { asyncHandler } from "@/middlewares/asyncHandler.js";
-import { AppError } from "@/middlewares/errorHandler.js";
 import { sendSuccess } from "@/utils/response.js";
+import type { CreateProductDto, UpdateProductDto } from "./product.model.js";
 import * as productService from "./product.service.js";
 
-// ─── Validation Schemas ───────────────────────────────────────────────────────
-
-const createProductSchema = z.object({
-  name: z
-    .string({ required_error: "Product name is required" })
-    .min(1, "Name cannot be empty")
-    .max(100, "Name must be at most 100 characters")
-    .trim(),
-  description: z
-    .string({ required_error: "Description is required" })
-    .min(1, "Description cannot be empty"),
-  price: z
-    .number({ required_error: "Price is required", invalid_type_error: "Price must be a number" })
-    .positive("Price must be a positive number")
-    .multipleOf(0.01, "Price can have at most 2 decimal places"),
-  stock: z
-    .number({ required_error: "Stock is required", invalid_type_error: "Stock must be a number" })
-    .int("Stock must be a whole number")
-    .min(0, "Stock cannot be negative"),
-});
-
-const updateProductSchema = createProductSchema.partial();
-
-// ─── Controllers ──────────────────────────────────────────────────────────────
+// Request bodies and params are already validated by `validate()` in product.route.ts.
 
 /**
  * GET /api/v1/products
@@ -53,11 +29,8 @@ export const getProductById = asyncHandler(async (req: Request, res: Response): 
  * Creates a new product (admin only).
  */
 export const createProduct = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const parsed = createProductSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(parsed.error.errors[0].message, 400);
-  }
-  const product = await productService.createProduct(parsed.data);
+  const dto: CreateProductDto = req.body;
+  const product = await productService.createProduct(dto);
   sendSuccess(res, product, "Product created successfully", 201);
 });
 
@@ -66,11 +39,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response): P
  * Partially updates a product (admin only).
  */
 export const updateProduct = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const parsed = updateProductSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(parsed.error.errors[0].message, 400);
-  }
-  const product = await productService.updateProduct(String(req.params.id), parsed.data);
+  const dto: UpdateProductDto = req.body;
+  const product = await productService.updateProduct(String(req.params.id), dto);
   sendSuccess(res, product, "Product updated successfully");
 });
 

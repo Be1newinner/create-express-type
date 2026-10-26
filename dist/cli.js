@@ -1,177 +1,237 @@
 #!/usr/bin/env node
 import { intro, outro, text, confirm, select, spinner, isCancel, cancel, log, } from "@clack/prompts";
-import { existsSync, createWriteStream, mkdirSync, writeFileSync, rmSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
-import { readFileSync } from "fs";
-import { homedir } from "os";
-import yauzl from "yauzl";
+import { parseArgs } from "util";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
-const REPO_ZIP_URL = "https://github.com/Be1newinner/create-express-type/archive/refs/heads/main.zip";
-const REPO_SUBDIR = "create-express-type-main/packages/express-type/";
-// ─── Database File Templates ──────────────────────────────────────────────────
-const PRISMA_SCHEMA = `\
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// ── Example Model ─────────────────────────────────────────────────────────────
-// Replace the User interface in src/features/auth/auth.model.ts with Prisma's
-// generated types once you run: npx prisma generate
-
-model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("user")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-`;
-const PRISMA_LIB = `\
-import { PrismaClient } from "@prisma/client";
-
-// Prevent multiple PrismaClient instances in development (hot-reload / tsx watch)
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log:
-      process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-`;
-const MONGOOSE_LIB = `\
-import mongoose from "mongoose";
-import { env } from "@/config/env.js";
-
+// Templates ship inside the npm package, so the scaffolded project always matches this CLI version
+const TEMPLATES_DIR = path.join(__dirname, "..", "packages");
+const BASE_TEMPLATE_DIR = path.join(TEMPLATES_DIR, "express-type");
+const OVERLAYS_DIR = path.join(TEMPLATES_DIR, "overlays");
+/** Never copied into a new project (local dev artifacts inside the template folders) */
+const SKIPPED_NAMES = new Set([
+    "node_modules",
+    "dist",
+    "coverage",
+    "package-lock.json",
+    ".env",
+    "overlay.json",
+]);
+const SKIPPED_PATHS = new Set([path.join(".husky", "_")]);
 /**
- * Opens a Mongoose connection to MongoDB.
- * Called at application startup, before app.listen().
+ * Dependencies whose install scripts must run (native bindings, binaries) — pnpm 10+
+ * blocks install scripts unless they're listed. Overlays add their own via overlay.json.
  */
-export async function connectDB(): Promise<void> {
-  await mongoose.connect(env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 5_000,
-  });
-  console.log("🍃 MongoDB connected");
-}
-
-/**
- * Gracefully closes the Mongoose connection.
- * Called during server shutdown.
- */
-export async function disconnectDB(): Promise<void> {
-  await mongoose.disconnect();
-  console.log("🍃 MongoDB disconnected");
-}
-
-/**
- * Returns current MongoDB connection health status string.
- */
-export function getDbStatus(): string {
-  const states: Record<number, string> = {
-    0: "disconnected",
-    1: "connected",
-    2: "connecting",
-    3: "disconnecting",
-  };
-  return states[mongoose.connection.readyState] || "unknown";
-}
-`;
+const BUILD_DEPENDENCIES = ["bcrypt", "esbuild"];
+/** Dependencies whose install scripts are explicitly skipped (telemetry from swagger-ui-dist) */
+const IGNORED_BUILD_DEPENDENCIES = ["@scarf/scarf"];
+// ─── Types ────────────────────────────────────────────────────────────────────
+const DATABASES = ["none", "prisma", "drizzle", "mongoose"];
+const PACKAGE_MANAGERS = ["npm", "pnpm", "yarn", "bun"];
+const DATABASE_INFO = {
+    none: { label: "None", hint: "pure Express, no database" },
+    prisma: { label: "PostgreSQL + Prisma", hint: "type-safe ORM with migrations" },
+    drizzle: { label: "PostgreSQL + Drizzle", hint: "lightweight, SQL-like TypeScript ORM" },
+    mongoose: { label: "MongoDB + Mongoose", hint: "schema-based ODM for MongoDB" },
+};
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 /** Validates that a string is a valid npm package name */
 function isValidPackageName(name) {
     return /^(?:@[a-z0-9-*~][a-z0-9-*._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(name);
 }
-/** Detects which package managers are available on the system */
+/** Detects which package managers are available on the system, with their versions */
 function detectAvailablePackageManagers() {
-    const managers = ["npm", "pnpm", "yarn", "bun"];
-    return managers.filter((pm) => {
+    const found = new Map();
+    for (const pm of PACKAGE_MANAGERS) {
         try {
-            execSync(`${pm} --version`, { stdio: "ignore" });
-            return true;
+            const version = execSync(`${pm} --version`, { stdio: ["ignore", "pipe", "ignore"] })
+                .toString()
+                .trim();
+            found.set(pm, version);
         }
         catch {
-            return false;
+            // not installed
         }
+    }
+    return found;
+}
+/** The package manager that launched this CLI (e.g. `pnpm create express-type`), if known */
+function detectInvokingPackageManager() {
+    const agent = process.env.npm_config_user_agent ?? "";
+    return PACKAGE_MANAGERS.find((pm) => agent.startsWith(`${pm}/`));
+}
+function copyDir(source, destination) {
+    cpSync(source, destination, {
+        recursive: true,
+        force: true,
+        filter: (src) => !SKIPPED_NAMES.has(path.basename(src)) && !SKIPPED_PATHS.has(path.relative(source, src)),
     });
 }
-/** Caches template zip locally to avoid re-downloading on every run */
-async function getTemplateZip() {
-    const cacheDir = path.join(homedir(), ".cache", "create-express-type");
-    const cacheFile = path.join(cacheDir, `template-v${pkg.version}.zip`);
-    if (existsSync(cacheFile)) {
-        return await readFile(cacheFile);
-    }
-    const response = await fetch(REPO_ZIP_URL);
-    if (!response.ok) {
-        throw new Error(`Failed to download template (HTTP ${response.status}: ${response.statusText})`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    const zipBuffer = Buffer.from(arrayBuffer);
-    try {
-        if (!existsSync(cacheDir)) {
-            mkdirSync(cacheDir, { recursive: true });
-        }
-        await writeFile(cacheFile, zipBuffer);
-    }
-    catch {
-        // Ignore cache write errors (e.g. read-only filesystem)
-    }
-    return zipBuffer;
+const emptyManifest = () => ({
+    extends: [],
+    dependencies: {},
+    devDependencies: {},
+    scripts: {},
+    env: [],
+    buildDependencies: [],
+});
+/**
+ * Resolves an overlay and the overlays it extends (depth-first, dependencies first)
+ * into the list of directories to copy and their merged manifest.
+ */
+function resolveOverlay(name) {
+    const dirs = [];
+    const manifest = emptyManifest();
+    const visit = (overlay) => {
+        const dir = path.join(OVERLAYS_DIR, overlay);
+        if (!existsSync(dir))
+            throw new Error(`Template overlay "${overlay}" is missing.`);
+        if (dirs.includes(dir))
+            return;
+        const manifestPath = path.join(dir, "overlay.json");
+        const own = existsSync(manifestPath)
+            ? JSON.parse(readFileSync(manifestPath, "utf-8"))
+            : {};
+        own.extends?.forEach(visit);
+        dirs.push(dir);
+        Object.assign(manifest.dependencies, own.dependencies);
+        Object.assign(manifest.devDependencies, own.devDependencies);
+        Object.assign(manifest.scripts, own.scripts);
+        manifest.env.push(...(own.env ?? []));
+        manifest.buildDependencies.push(...(own.buildDependencies ?? []));
+    };
+    visit(name);
+    return { dirs, manifest };
 }
-/** Extracts a subdirectory from a zip buffer into a destination folder */
-async function extractZip(zipBuffer, destination, subdir) {
-    return new Promise((resolve, reject) => {
-        yauzl.fromBuffer(zipBuffer, { lazyEntries: true }, (err, zipfile) => {
-            if (err)
-                return reject(err);
-            zipfile.readEntry();
-            zipfile.on("entry", (entry) => {
-                const entryPath = entry.fileName;
-                const isDirectory = entryPath.endsWith("/");
-                if (entryPath.startsWith(subdir) && !isDirectory) {
-                    const relativePath = entryPath.substring(subdir.length);
-                    if (!relativePath) {
-                        zipfile.readEntry();
-                        return;
-                    }
-                    const newPath = path.join(destination, relativePath);
-                    const parentDir = path.dirname(newPath);
-                    if (!existsSync(parentDir)) {
-                        mkdirSync(parentDir, { recursive: true });
-                    }
-                    zipfile.openReadStream(entry, (streamErr, readStream) => {
-                        if (streamErr)
-                            return reject(streamErr);
-                        const writeStream = createWriteStream(newPath);
-                        readStream.pipe(writeStream);
-                        writeStream.on("finish", () => zipfile.readEntry());
-                        writeStream.on("error", reject);
-                    });
-                }
-                else {
-                    zipfile.readEntry();
-                }
-            });
-            zipfile.on("end", () => resolve());
-            zipfile.on("error", (e) => reject(e));
-        });
+const sortKeys = (obj) => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
+/**
+ * Updates package.json in the scaffolded project:
+ * - Sets the project name, version and (for pnpm/yarn) the packageManager field
+ * - Merges in the database overlay's dependencies and scripts
+ */
+function updatePackageJson(destination, projectName, manifest, packageManager, pmVersion) {
+    const pkgPath = path.join(destination, "package.json");
+    const parsed = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    parsed.name = projectName;
+    parsed.version = "0.1.0";
+    // Pins the version Corepack uses (locally and in the Dockerfile)
+    if ((packageManager === "pnpm" || packageManager === "yarn") && pmVersion) {
+        parsed.packageManager = `${packageManager}@${pmVersion}`;
+    }
+    parsed.scripts = { ...parsed.scripts, ...manifest.scripts };
+    parsed.dependencies = sortKeys({ ...parsed.dependencies, ...manifest.dependencies });
+    parsed.devDependencies = sortKeys({ ...parsed.devDependencies, ...manifest.devDependencies });
+    writeFileSync(pkgPath, JSON.stringify(parsed, null, 2) + "\n", "utf-8");
+}
+/**
+ * pnpm 10+ refuses to run dependency install scripts unless they're approved
+ * (pnpm 11 fails the install outright). Pre-approve the ones this project needs.
+ *
+ * @returns extra config files the Dockerfile must copy before installing
+ */
+function configurePnpmBuilds(destination, pmVersion, buildDependencies) {
+    const major = Number((pmVersion ?? "").split(".")[0]);
+    const allowed = [...new Set([...BUILD_DEPENDENCIES, ...buildDependencies])].sort();
+    if (major >= 11) {
+        const entries = [
+            ...allowed.map((name) => `  '${name}': true`),
+            ...IGNORED_BUILD_DEPENDENCIES.map((name) => `  '${name}': false`),
+        ];
+        writeFileSync(path.join(destination, "pnpm-workspace.yaml"), `allowBuilds:\n${entries.join("\n")}\n`, "utf-8");
+        return ["pnpm-workspace.yaml"];
+    }
+    if (major === 10) {
+        const pkgPath = path.join(destination, "package.json");
+        const parsed = JSON.parse(readFileSync(pkgPath, "utf-8"));
+        parsed.pnpm = {
+            onlyBuiltDependencies: allowed,
+            ignoredBuiltDependencies: IGNORED_BUILD_DEPENDENCIES,
+        };
+        writeFileSync(pkgPath, JSON.stringify(parsed, null, 2) + "\n", "utf-8");
+    }
+    return [];
+}
+/** Adds the overlay's env vars to src/config/env.ts and .env.example */
+function injectEnvVars(destination, vars) {
+    if (vars.length === 0)
+        return;
+    const envTsPath = path.join(destination, "src", "config", "env.ts");
+    const envTsLines = readFileSync(envTsPath, "utf-8").split("\n");
+    const anchor = envTsLines.findIndex((line) => line.trimStart().startsWith("// ── Add your own vars below"));
+    if (anchor === -1) {
+        throw new Error("Could not find the env var anchor comment in src/config/env.ts.");
+    }
+    const indent = envTsLines[anchor].match(/^\s*/)?.[0] ?? "";
+    envTsLines.splice(anchor, 0, `${indent}// Database`, ...vars.map((v) => `${indent}${v.name}: ${v.schema},`), "");
+    writeFileSync(envTsPath, envTsLines.join("\n"), "utf-8");
+    const envExamplePath = path.join(destination, ".env.example");
+    const envExample = readFileSync(envExamplePath, "utf-8").trimEnd();
+    const exampleLines = [
+        "# ─── Database ─────────────────────────────────────────────────────────────────",
+        ...vars.map((v) => `${v.name}=${v.example}`),
+    ];
+    writeFileSync(envExamplePath, `${envExample}\n\n${exampleLines.join("\n")}\n`, "utf-8");
+}
+/**
+ * The template Dockerfile uses npm. For other package managers, swap in their
+ * setup, lockfile and install commands.
+ */
+function configureDockerfile(destination, packageManager, pmVersion, extraInstallFiles) {
+    if (packageManager === "npm")
+        return;
+    const [major = 0, minor = 0] = (pmVersion ?? "").split(".").map(Number);
+    const commands = {
+        pnpm: {
+            setup: "RUN corepack enable",
+            lockfile: "pnpm-lock.yaml",
+            install: "pnpm install --frozen-lockfile",
+            installProd: "pnpm install --frozen-lockfile --prod",
+        },
+        yarn: major >= 2
+            ? {
+                setup: "RUN corepack enable",
+                lockfile: "yarn.lock",
+                install: "yarn install --immutable",
+                installProd: "yarn workspaces focus --all --production",
+            }
+            : {
+                setup: "RUN corepack enable",
+                lockfile: "yarn.lock",
+                install: "yarn install --frozen-lockfile",
+                installProd: "yarn install --frozen-lockfile --production",
+            },
+        bun: {
+            setup: `RUN npm install -g bun@${pmVersion ?? "latest"}`,
+            lockfile: major > 1 || (major === 1 && minor >= 2) ? "bun.lock" : "bun.lockb",
+            install: "bun install --frozen-lockfile",
+            installProd: "bun install --frozen-lockfile --production",
+        },
+    }[packageManager];
+    const replacements = {
+        "ENV HUSKY=0": `ENV HUSKY=0\n${commands.setup}`,
+        "COPY package.json package-lock.json ./": `COPY ${["package.json", commands.lockfile, ...extraInstallFiles].join(" ")} ./`,
+        "RUN npm ci": `RUN ${commands.install}`,
+        "RUN npm ci --omit=dev": `RUN ${commands.installProd}`,
+        "RUN npm run build": `RUN ${packageManager} run build`,
+    };
+    const dockerfilePath = path.join(destination, "Dockerfile");
+    const lines = readFileSync(dockerfilePath, "utf-8").split("\n");
+    const unmatched = new Set(Object.keys(replacements));
+    const updated = lines.map((line) => {
+        const replacement = replacements[line];
+        if (replacement === undefined)
+            return line;
+        unmatched.delete(line);
+        return replacement;
     });
+    if (unmatched.size > 0) {
+        throw new Error(`Dockerfile is missing expected lines: ${[...unmatched].join(", ")}`);
+    }
+    writeFileSync(dockerfilePath, updated.join("\n"), "utf-8");
 }
 /** Initializes git repository in destination directory */
 function initGitRepo(destination) {
@@ -194,27 +254,44 @@ function makeInitialCommit(destination, version) {
         return false;
     }
 }
+/** Last lines of a failed command's output, for error messages */
+function commandOutputTail(error, lines = 15) {
+    const { stdout, stderr } = error;
+    const output = `${stdout?.toString() ?? ""}\n${stderr?.toString() ?? ""}`.trim();
+    return output.split("\n").slice(-lines).join("\n");
+}
 /** Generates personalized README.md file */
-async function generateReadme(destination, projectName, db, packageManager) {
-    const dbName = db === "prisma"
-        ? "PostgreSQL + Prisma"
-        : db === "mongoose"
-            ? "MongoDB + Mongoose"
-            : "None (Pure Express)";
-    const dbCommands = db === "prisma"
-        ? `### Database Scripts (Prisma)
+function generateReadme(destination, projectName, db, packageManager) {
+    const run = `${packageManager} run`;
+    const dbSection = {
+        none: "",
+        prisma: `### Database (PostgreSQL + Prisma)
+
+Start PostgreSQL with \`docker compose up -d postgres\` (or point \`DATABASE_URL\` at your own), then:
+
 \`\`\`bash
-${packageManager} run db:push     # Push schema to database
-${packageManager} run db:migrate  # Run migration (dev)
-${packageManager} run db:generate # Generate Prisma client
-${packageManager} run db:studio   # Open Prisma Studio UI
+${run} db:push      # Sync prisma/schema.prisma → database
+${run} db:migrate   # Create & apply a migration (dev)
+${run} db:generate  # Regenerate the Prisma client
+${run} db:studio    # Open Prisma Studio
 \`\`\`
-`
-        : db === "mongoose"
-            ? `### Database Setup (MongoDB)
-Ensure MongoDB is running locally or provide a remote \`MONGODB_URI\` in your \`.env\` file.
-`
-            : "";
+`,
+        drizzle: `### Database (PostgreSQL + Drizzle)
+
+Start PostgreSQL with \`docker compose up -d postgres\` (or point \`DATABASE_URL\` at your own), then:
+
+\`\`\`bash
+${run} db:push      # Sync src/db/schema.ts → database
+${run} db:generate  # Generate SQL migrations into ./drizzle
+${run} db:migrate   # Apply migrations
+${run} db:studio    # Open Drizzle Studio
+\`\`\`
+`,
+        mongoose: `### Database (MongoDB + Mongoose)
+
+Start MongoDB with \`docker compose up -d mongo\`, or set \`MONGODB_URI\` in \`.env\` to your own instance.
+`,
+    };
     const readmeContent = `# ${projectName}
 
 > Generated with [create-express-type](https://github.com/Be1newinner/create-express-type) v${pkg.version}
@@ -224,34 +301,45 @@ Production-ready TypeScript + Express.js backend API.
 ## 🛠️ Stack
 
 - **Framework**: Express.js 5 + TypeScript
-- **Database**: ${dbName}
+- **Database**: ${DATABASE_INFO[db].label}
+- **Validation**: Zod — env vars at startup, requests via the \`validate()\` middleware
+- **API Docs**: OpenAPI 3 generated from the Zod schemas, Swagger UI at \`/docs\`
 - **Logger**: Pino (structured JSON in prod, pretty in dev)
 - **Security**: Helmet, CORS, Express Rate Limit
-- **Validation**: Zod (fail-fast environment & request validation)
 - **Code Quality**: ESLint, Prettier, Husky, lint-staged
 - **Testing**: Vitest + Supertest
+- **Deployment**: Multi-stage Dockerfile + docker-compose
 
 ---
 
 ## 🚀 Getting Started
 
-### 1. Environment Setup
-
 \`\`\`bash
-cp .env.example .env
+cp .env.example .env   # then fill in your secrets
+${run} dev
 \`\`\`
 
-Fill in your secrets in \`.env\`.
+- API: \`http://localhost:8005/api/v1\`
+- Docs: \`http://localhost:8005/docs\`
+- Health: \`http://localhost:8005/health\`
 
-### 2. Run Development Server
+${dbSection[db]}
+### Docker
 
 \`\`\`bash
-${packageManager} run dev
+docker compose up --build
 \`\`\`
 
-The server will start at \`http://localhost:8005\`.
+---
 
-${dbCommands}
+## 🧩 Adding a Feature
+
+\`\`\`bash
+${run} gen:feature${packageManager === "npm" ? " --" : ""} order
+\`\`\`
+
+Creates \`src/features/order/\` (schema, model, service, controller, routes with API docs),
+a test in \`__tests__/order.test.ts\`, and mounts it at \`/api/v1/orders\`.
 
 ---
 
@@ -259,130 +347,31 @@ ${dbCommands}
 
 | Script | Description |
 | --- | --- |
-| \`${packageManager} run dev\` | Start dev server with hot reload |
-| \`${packageManager} run build\` | Build production bundle |
-| \`${packageManager} run start\` | Start production server |
-| \`${packageManager} run check\` | Run TypeScript type check |
-| \`${packageManager} run lint\` | Run ESLint |
-| \`${packageManager} run test\` | Run Vitest tests |
+| \`${run} dev\` | Start dev server with hot reload |
+| \`${run} build\` | Build production bundle |
+| \`${run} start\` | Start production server |
+| \`${run} check\` | Run TypeScript type check |
+| \`${run} lint\` | Run ESLint |
+| \`${run} test\` | Run Vitest tests |
+| \`${run} gen:feature\` | Scaffold a new feature module |
 
 ---
 
 ## 🌐 API Endpoints
 
+See \`/docs\` for the full, interactive reference.
+
 - \`GET /health\` — Server health status & uptime
 - \`POST /api/v1/auth/register\` — Register new user
 - \`POST /api/v1/auth/login\` — Login user (JWT token)
+- \`GET /api/v1/auth/profile\` — Current user (requires Bearer token)
 - \`GET /api/v1/products\` — List products
 - \`GET /api/v1/products/:id\` — Get product by ID
 `;
-    await writeFile(path.join(destination, "README.md"), readmeContent, "utf-8");
+    writeFileSync(path.join(destination, "README.md"), readmeContent, "utf-8");
 }
-/**
- * Updates package.json in the scaffolded project:
- * - Sets the project name and version
- * - Injects database-specific dependencies and npm scripts
- */
-async function updatePackageJson(destination, projectName, db) {
-    const pkgPath = path.join(destination, "package.json");
-    if (!existsSync(pkgPath))
-        return;
-    const raw = await readFile(pkgPath, "utf-8");
-    const parsed = JSON.parse(raw);
-    parsed.name = projectName;
-    parsed.version = "0.1.0";
-    if (db === "prisma") {
-        parsed.dependencies = { ...parsed.dependencies, "@prisma/client": "^6.0.0" };
-        parsed.devDependencies = { ...parsed.devDependencies, prisma: "^6.0.0" };
-        parsed.scripts = {
-            ...parsed.scripts,
-            "db:generate": "prisma generate",
-            "db:push": "prisma db push",
-            "db:migrate": "prisma migrate dev",
-            "db:studio": "prisma studio",
-        };
-    }
-    else if (db === "mongoose") {
-        parsed.dependencies = { ...parsed.dependencies, mongoose: "^8.0.0" };
-    }
-    await writeFile(pkgPath, JSON.stringify(parsed, null, 2) + "\n", "utf-8");
-}
-/**
- * Injects database-specific files and config into the scaffolded project.
- */
-async function injectDatabase(destination, db) {
-    const srcIndex = path.join(destination, "src", "index.ts");
-    const srcEnv = path.join(destination, "src", "config", "env.ts");
-    const envEx = path.join(destination, ".env.example");
-    let indexContent = await readFile(srcIndex, "utf-8");
-    // ── None: scrub the markers and return ─────────────────────────────────────
-    if (db === "none") {
-        indexContent = indexContent
-            .replace(/^\/\/ __DB_IMPORT__\n/m, "")
-            .replace(/^\/\/ __DB_CONNECT__\n/m, "")
-            .replace(/^ *\/\/ __DB_DISCONNECT__\n/m, "")
-            .replace(/^ *\/\/ __DB_HEALTH_CHECK__\n/m, "")
-            .replace(/^ *\/__DB_HEALTH_RESULT__\n/m, "");
-        await writeFile(srcIndex, indexContent, "utf-8");
-        return;
-    }
-    // ── Shared setup for prisma / mongoose ────────────────────────────────────
-    const libDir = path.join(destination, "src", "lib");
-    if (!existsSync(libDir))
-        mkdirSync(libDir, { recursive: true });
-    let envContent = await readFile(srcEnv, "utf-8");
-    let envExContent = await readFile(envEx, "utf-8");
-    // ── Prisma ─────────────────────────────────────────────────────────────────
-    if (db === "prisma") {
-        // Create new files
-        const prismaDir = path.join(destination, "prisma");
-        if (!existsSync(prismaDir))
-            mkdirSync(prismaDir, { recursive: true });
-        writeFileSync(path.join(prismaDir, "schema.prisma"), PRISMA_SCHEMA, "utf-8");
-        writeFileSync(path.join(libDir, "prisma.ts"), PRISMA_LIB, "utf-8");
-        // src/index.ts — inject import, remove connect marker, inject disconnect, inject health check
-        indexContent = indexContent
-            .replace("// __DB_IMPORT__", `import { prisma } from "@/lib/prisma.js";`)
-            .replace(/^\/\/ __DB_CONNECT__\n/m, "") // Prisma uses lazy connection
-            .replace(/^ *\/\/ __DB_DISCONNECT__/m, `      await prisma.$disconnect();\n      logger.info("🔌 Prisma disconnected.");`)
-            .replace("// __DB_HEALTH_CHECK__", `    let dbStatus = "unknown";\n    try {\n      await prisma.$queryRaw\`SELECT 1\`;\n      dbStatus = "connected";\n    } catch {\n      dbStatus = "error";\n    }`)
-            .replace("// __DB_HEALTH_RESULT__", `db: dbStatus,`);
-        // src/config/env.ts — uncomment DATABASE_URL
-        envContent = envContent.replace(`  // DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),`, `  DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),`);
-        // .env.example — uncomment DATABASE_URL
-        envExContent = envExContent.replace("# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mydb", "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mydb");
-        // ── Mongoose ───────────────────────────────────────────────────────────────
-    }
-    else if (db === "mongoose") {
-        // Create new files
-        writeFileSync(path.join(libDir, "mongoose.ts"), MONGOOSE_LIB, "utf-8");
-        // src/index.ts — inject import, await connectDB before listen, inject disconnect, inject health check
-        indexContent = indexContent
-            .replace("// __DB_IMPORT__", `import { connectDB, disconnectDB, getDbStatus } from "@/lib/mongoose.js";`)
-            .replace("// __DB_CONNECT__", "await connectDB(); // top-level await (ESM)")
-            .replace(/^ *\/\/ __DB_DISCONNECT__/m, "      await disconnectDB();")
-            .replace("// __DB_HEALTH_CHECK__", `    const dbStatus = getDbStatus();`)
-            .replace("// __DB_HEALTH_RESULT__", `db: dbStatus,`);
-        // src/config/env.ts — add MONGODB_URI instead of DATABASE_URL
-        envContent = envContent.replace(`  // DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),`, `  MONGODB_URI: z.string().url("MONGODB_URI must be a valid MongoDB connection URL"),`);
-        // .env.example — swap commented DATABASE_URL for active MONGODB_URI
-        envExContent = envExContent
-            .replace(/^# ─── Database .*$/m, "# ─── Database ─────────────────────────────────────────────────────────────────")
-            .replace("# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mydb", "MONGODB_URI=mongodb://localhost:27017/mydb");
-    }
-    // Write all modified files back
-    await writeFile(srcIndex, indexContent, "utf-8");
-    await writeFile(srcEnv, envContent, "utf-8");
-    await writeFile(envEx, envExContent, "utf-8");
-}
-// ─── CLI Entry Point ──────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-if (args.includes("--version") || args.includes("-v")) {
-    console.log(`create-express-type v${pkg.version}`);
-    process.exit(0);
-}
-if (args.includes("--help") || args.includes("-h")) {
-    console.log(`
+// ─── CLI Arguments ────────────────────────────────────────────────────────────
+const HELP = `
   create-express-type v${pkg.version}
 
   A CLI to scaffold a production-ready TypeScript + Express.js project.
@@ -391,29 +380,99 @@ if (args.includes("--help") || args.includes("-h")) {
     npx create-express-type [project-name] [options]
 
   Options:
-    --version, -v   Print the version number
-    --help, -h      Show this help message
-    --yes, -y       Skip interactive prompts and use defaults
+    --db <name>          Database: ${DATABASES.join(" | ")}
+    --pm <name>          Package manager: ${PACKAGE_MANAGERS.join(" | ")}
+    --install            Install dependencies (default)
+    --no-install         Skip installing dependencies
+    --git                Initialize a git repository (default)
+    --no-git             Skip git init and the initial commit
+    --yes, -y            Use defaults for anything not passed as a flag
+    --version, -v        Print the version number
+    --help, -h           Show this help message
 
   Examples:
-    npx create-express-type                  # Interactive mode
-    npx create-express-type my-api           # Scaffold with given name
-    npx create-express-type my-api --yes     # Non-interactive mode
-  `);
+    npx create-express-type                                   # Interactive mode
+    npx create-express-type my-api                            # Scaffold with given name
+    npx create-express-type my-api --yes                      # All defaults
+    npx create-express-type my-api --db drizzle --pm pnpm -y  # Fully scripted
+`;
+function parseCliArgs() {
+    try {
+        return parseArgs({
+            args: process.argv.slice(2),
+            allowPositionals: true,
+            options: {
+                db: { type: "string" },
+                pm: { type: "string" },
+                install: { type: "boolean" },
+                "no-install": { type: "boolean" },
+                git: { type: "boolean" },
+                "no-git": { type: "boolean" },
+                yes: { type: "boolean", short: "y" },
+                version: { type: "boolean", short: "v" },
+                help: { type: "boolean", short: "h" },
+            },
+        });
+    }
+    catch (error) {
+        console.error(`\n  ${error instanceof Error ? error.message : String(error)}`);
+        console.error("  Run with --help to see the available options.\n");
+        process.exit(1);
+    }
+}
+/** Resolves a --flag / --no-flag pair to true, false, or undefined when neither is passed */
+function booleanFlag(values, name) {
+    const on = values[name] === true;
+    const off = values[`no-${name}`] === true;
+    if (on && off) {
+        console.error(`\n  --${name} and --no-${name} can't be used together.\n`);
+        process.exit(1);
+    }
+    return on ? true : off ? false : undefined;
+}
+function exitWithError(message) {
+    log.error(message);
+    process.exit(1);
+}
+function exitIfCancelled(value) {
+    if (isCancel(value)) {
+        cancel("Cancelled. No files were created.");
+        process.exit(0);
+    }
+    return value;
+}
+const { values: flags, positionals } = parseCliArgs();
+if (flags.version) {
+    console.log(`create-express-type v${pkg.version}`);
     process.exit(0);
 }
+if (flags.help) {
+    console.log(HELP);
+    process.exit(0);
+}
+// ─── CLI Entry Point ──────────────────────────────────────────────────────────
 async function main() {
     console.log("");
     intro("  🚀  create-express-type — TypeScript + Express Scaffolding  ");
-    const useDefaults = args.includes("--yes") || args.includes("-y");
+    const useDefaults = flags.yes === true;
+    const installFlag = booleanFlag(flags, "install");
+    const gitFlag = booleanFlag(flags, "git");
+    if (positionals.length > 1) {
+        exitWithError(`Expected a single project name, got: ${positionals.join(" ")}`);
+    }
+    if (flags.db !== undefined && !DATABASES.includes(flags.db)) {
+        exitWithError(`Unknown --db "${flags.db}". Choose one of: ${DATABASES.join(", ")}`);
+    }
+    if (flags.pm !== undefined && !PACKAGE_MANAGERS.includes(flags.pm)) {
+        exitWithError(`Unknown --pm "${flags.pm}". Choose one of: ${PACKAGE_MANAGERS.join(", ")}`);
+    }
     // ── Step 1: Project Name ───────────────────────────────────────────────────
-    let projectName = args.find((a) => !a.startsWith("--") && !a.startsWith("-"));
+    let projectName = positionals[0];
     if (!projectName) {
         if (useDefaults) {
-            log.error("Project name is required when using --yes flag (e.g. npx create-express-type my-api --yes)");
-            process.exit(1);
+            exitWithError("Project name is required when using --yes flag (e.g. npx create-express-type my-api --yes)");
         }
-        const nameInput = await text({
+        projectName = exitIfCancelled(await text({
             message: "What is your project name?",
             placeholder: "my-express-api",
             validate: (value) => {
@@ -424,86 +483,82 @@ async function main() {
                 if (existsSync(path.resolve(process.cwd(), value)))
                     return `Directory "${value}" already exists. Choose a different name.`;
             },
-        });
-        if (isCancel(nameInput)) {
-            cancel("Cancelled. No files were created.");
-            process.exit(0);
-        }
-        projectName = nameInput;
+        }));
     }
     else {
         if (!isValidPackageName(projectName)) {
-            log.error('Invalid project name. Use only lowercase letters, numbers, and hyphens (e.g. "my-api").');
-            process.exit(1);
+            exitWithError('Invalid project name. Use only lowercase letters, numbers, and hyphens (e.g. "my-api").');
         }
         if (existsSync(path.resolve(process.cwd(), projectName))) {
-            log.error(`Directory "${projectName}" already exists. Choose a different name.`);
-            process.exit(1);
+            exitWithError(`Directory "${projectName}" already exists. Choose a different name.`);
         }
     }
     const destination = path.resolve(process.cwd(), projectName);
     // ── Step 2: Package Manager ────────────────────────────────────────────────
     const available = detectAvailablePackageManagers();
-    let packageManager = "npm";
-    if (!useDefaults && available.length > 1) {
-        const pmChoice = await select({
-            message: "Which package manager would you like to use?",
-            options: available.map((pm) => ({
-                value: pm,
-                label: pm,
-                hint: pm === "pnpm" ? "fast, disk-efficient" : pm === "bun" ? "ultra-fast" : undefined,
-            })),
-        });
-        if (isCancel(pmChoice)) {
-            cancel("Cancelled. No files were created.");
-            process.exit(0);
-        }
-        packageManager = pmChoice;
+    const invoking = detectInvokingPackageManager();
+    const defaultPm = invoking && available.has(invoking) ? invoking : "npm";
+    let packageManager = flags.pm;
+    if (packageManager && !available.has(packageManager)) {
+        exitWithError(`--pm ${packageManager} was requested, but ${packageManager} isn't installed.`);
     }
-    // ── Step 3: Database ───────────────────────────────────────────────────────
-    let db = "none";
-    if (!useDefaults) {
-        const dbChoice = await select({
-            message: "Which database would you like to use?",
-            options: [
-                { value: "none", label: "None", hint: "pure Express, no database" },
-                { value: "prisma", label: "PostgreSQL + Prisma", hint: "type-safe ORM with migrations" },
-                { value: "mongoose", label: "MongoDB + Mongoose", hint: "schema-based ODM for MongoDB" },
-            ],
-        });
-        if (isCancel(dbChoice)) {
-            cancel("Cancelled. No files were created.");
-            process.exit(0);
+    if (!packageManager) {
+        if (useDefaults || available.size <= 1) {
+            packageManager = defaultPm;
         }
-        db = dbChoice;
+        else {
+            packageManager = exitIfCancelled(await select({
+                message: "Which package manager would you like to use?",
+                initialValue: defaultPm,
+                options: [...available.keys()].map((pm) => ({
+                    value: pm,
+                    label: pm,
+                    hint: pm === "pnpm" ? "fast, disk-efficient" : pm === "bun" ? "ultra-fast" : undefined,
+                })),
+            }));
+        }
+    }
+    const pmVersion = available.get(packageManager);
+    // ── Step 3: Database ───────────────────────────────────────────────────────
+    let db = flags.db;
+    if (!db) {
+        db = useDefaults
+            ? "none"
+            : exitIfCancelled(await select({
+                message: "Which database would you like to use?",
+                options: DATABASES.map((value) => ({ value, ...DATABASE_INFO[value] })),
+            }));
     }
     // ── Step 4: Auto-install ───────────────────────────────────────────────────
-    let autoInstall = true;
-    if (!useDefaults) {
-        const autoInstallChoice = await confirm({
-            message: `Install dependencies now using ${packageManager}?`,
-            initialValue: true,
-        });
-        if (isCancel(autoInstallChoice)) {
-            cancel("Cancelled. No files were created.");
-            process.exit(0);
-        }
-        autoInstall = autoInstallChoice;
+    let autoInstall = installFlag;
+    if (autoInstall === undefined) {
+        autoInstall = useDefaults
+            ? true
+            : exitIfCancelled(await confirm({
+                message: `Install dependencies now using ${packageManager}?`,
+                initialValue: true,
+            }));
     }
-    // ── Step 5: Download & Extract ─────────────────────────────────────────────
+    const useGit = gitFlag ?? true;
+    // ── Step 5: Copy & Configure ───────────────────────────────────────────────
     const s = spinner();
-    s.start("Preparing template...");
+    s.start("Copying template...");
     try {
-        await mkdir(destination, { recursive: true });
-        const zipBuffer = await getTemplateZip();
-        s.message("Extracting files...");
-        await extractZip(zipBuffer, destination, REPO_SUBDIR);
+        copyDir(BASE_TEMPLATE_DIR, destination);
+        // npm strips .gitignore files when publishing, so the template ships it as _gitignore
+        renameSync(path.join(destination, "_gitignore"), path.join(destination, ".gitignore"));
         s.message("Configuring project & generating docs...");
-        await injectDatabase(destination, db);
-        await updatePackageJson(destination, projectName, db);
-        await generateReadme(destination, projectName, db, packageManager);
-        s.message("Initializing git repository...");
-        const hasGit = initGitRepo(destination);
+        const overlay = db === "none" ? { dirs: [], manifest: emptyManifest() } : resolveOverlay(db);
+        overlay.dirs.forEach((dir) => copyDir(dir, destination));
+        injectEnvVars(destination, overlay.manifest.env);
+        updatePackageJson(destination, projectName, overlay.manifest, packageManager, pmVersion);
+        const extraInstallFiles = packageManager === "pnpm"
+            ? configurePnpmBuilds(destination, pmVersion, overlay.manifest.buildDependencies)
+            : [];
+        configureDockerfile(destination, packageManager, pmVersion, extraInstallFiles);
+        generateReadme(destination, projectName, db, packageManager);
+        // Before install, so Husky's prepare script can install the git hooks
+        const hasGit = useGit && initGitRepo(destination);
         s.stop(`✅ Project "${projectName}" created at ./${projectName}`);
         // ── Step 6: Install dependencies ───────────────────────────────────────
         if (autoInstall) {
@@ -511,51 +566,50 @@ async function main() {
             installSpinner.start(`Installing dependencies with ${packageManager}...`);
             try {
                 execSync(`${packageManager} install`, { cwd: destination, stdio: "pipe" });
-                installSpinner.stop("✅ Dependencies installed & git hooks prepared!");
-                // Auto-generate Prisma client after install
-                if (db === "prisma") {
-                    const genSpinner = spinner();
-                    genSpinner.start("Generating Prisma client...");
-                    try {
-                        execSync(`${packageManager} run db:generate`, {
-                            cwd: destination,
-                            stdio: "pipe",
-                        });
-                        genSpinner.stop("✅ Prisma client generated!");
-                    }
-                    catch {
-                        genSpinner.stop("⚠️  Prisma client generation failed — run `npm run db:generate` manually after setting DATABASE_URL.");
-                    }
-                }
+                installSpinner.stop(db === "prisma"
+                    ? "✅ Dependencies installed & Prisma client generated!"
+                    : "✅ Dependencies installed & git hooks prepared!");
             }
-            catch {
-                installSpinner.stop("⚠️  Auto-install failed. Run the install command manually in the project directory.");
+            catch (error) {
+                installSpinner.stop("⚠️  Auto-install failed. Run the install command manually.");
+                log.warn(commandOutputTail(error));
             }
         }
-        // Initial git commit after setup & install
-        if (hasGit) {
-            makeInitialCommit(destination, pkg.version);
+        // Initial git commit after setup & install (includes the lockfile)
+        if (hasGit && !makeInitialCommit(destination, pkg.version)) {
+            log.warn("Couldn't create the initial git commit (is git user.name/user.email set?). Commit manually.");
         }
         // ── Step 7: Next Steps ─────────────────────────────────────────────────
-        const installCmd = autoInstall ? "" : `\n  ${packageManager} install`;
+        const run = `${packageManager} run`;
         const dbNextSteps = {
             none: "",
             prisma: [
                 "",
-                "  📦  Prisma — next steps:",
-                "  Fill in DATABASE_URL in .env, then:",
-                `  ${packageManager} run db:push      # sync schema → PostgreSQL`,
-                `  ${packageManager} run db:studio    # open Prisma Studio UI`,
+                "  🐘  PostgreSQL + Prisma:",
+                "  docker compose up -d postgres   # or set DATABASE_URL in .env",
+                `  ${run} db:push               # sync schema → database`,
             ].join("\n"),
-            mongoose: "\n  🍃  Make sure MongoDB is running before starting the dev server.",
+            drizzle: [
+                "",
+                "  🐘  PostgreSQL + Drizzle:",
+                "  docker compose up -d postgres   # or set DATABASE_URL in .env",
+                `  ${run} db:push               # sync schema → database`,
+            ].join("\n"),
+            mongoose: [
+                "",
+                "  🍃  MongoDB + Mongoose:",
+                "  docker compose up -d mongo      # or set MONGODB_URI in .env",
+            ].join("\n"),
         };
         outro([
             `  Project ready! Here's what to do next:\n`,
             `  cd ${projectName}`,
-            installCmd,
+            autoInstall ? "" : `  ${packageManager} install`,
             `  cp .env.example .env   # Add your secrets`,
-            `  ${packageManager} run dev          # Start the dev server`,
             dbNextSteps[db],
+            `  ${run} dev          # Start the dev server → http://localhost:8005/docs`,
+            `\n  ${run} gen:feature${packageManager === "npm" ? " --" : ""} order   # Add a feature module`,
+            `  docker compose up --build    # Run the API in Docker`,
             `\n  🌐  Docs: https://github.com/Be1newinner/create-express-type`,
         ]
             .filter(Boolean)

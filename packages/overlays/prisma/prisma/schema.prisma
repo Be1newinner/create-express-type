@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Example Model ─────────────────────────────────────────────────────────────
+// Replace the User interface in src/features/auth/auth.model.ts with Prisma's
+// generated `User` type, then swap the in-memory store in auth.service.ts for
+// `prisma.user` queries.
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

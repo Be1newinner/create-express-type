@@ -1,2 +1,6 @@
-/.dist
-/node_modules
+node_modules/
+.env
+coverage/
+
+# Template build output (the CLI's own dist/cli.js is committed)
+packages/*/dist/

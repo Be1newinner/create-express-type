@@ -7,7 +7,7 @@ import type { AuthResponse, CreateUserDto, LoginDto, User, UserResponse } from "
 // ─── In-Memory Store (Replace with your Database) ────────────────────────────
 //
 // 🔌 Prisma example:
-//   import { prisma } from "@/lib/prisma.js";
+//   import { prisma } from "@/lib/db.js";
 //   const user = await prisma.user.findUnique({ where: { email } });
 //
 // 🔌 Mongoose example:

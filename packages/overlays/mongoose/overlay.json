@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "mongoose": "^8.0.0"
+  },
+  "env": [
+    {
+      "name": "MONGODB_URI",
+      "schema": "z.string().url(\"MONGODB_URI must be a valid MongoDB connection URL\")",
+      "example": "mongodb://localhost:27017/mydb"
+    }
+  ]
+}
