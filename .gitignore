@@ -4,3 +4,6 @@ coverage/
 
 # Template build output (the CLI's own dist/cli.js is committed)
 packages/*/dist/
+
+# Written by .github/scripts/next-version.mjs
+release-notes.md

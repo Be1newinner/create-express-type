@@ -60,31 +60,12 @@ Please be respectful and welcoming to all members of our community. We expect al
 
 ## **Publishing an Updated Version (For Maintainers)**
 
-This section is for maintainers with publishing rights. It outlines the process for releasing a new version of the package to npm.
+Releases are automated by the [Release workflow](.github/workflows/release.yml). Don't run `npm publish` by hand.
 
-1.  **Login to npm:** Ensure you are logged into the correct npm account in your terminal.
+- **Patch (`x.y.Z`) — automatic.** Every push to `main` that changes something shipped in the npm package (`src/`, `packages/` or `package.json`) runs CI and, if it passes, publishes the next patch version. Changes to docs, CI or tests alone don't release.
+- **Minor (`x.Y.0`) — maintainer approval only.** Go to **Actions → Release → Run workflow**, choose `bump: minor`, and run it. Only the repository owner can start it.
+- **Major (`X.0.0`) — never automated.**
 
-    ```bash
-    npm login
-    ```
+Each release gets a `vX.Y.Z` git tag and a GitHub release listing the shipped commits. The `version` in `package.json` isn't updated in the repo; the workflow sets it at publish time, based on the latest version on npm.
 
-2.  **Update the Version:** Decide on the correct [Semantic Versioning (SemVer)](https://semver.org/) bump.
-
-    - `npm version patch` for a backward-compatible bug fix.
-    - `npm version minor` for a new backward-compatible feature.
-    - `npm version major` for a breaking change.
-
-    This command will automatically update `package.json`, create a Git commit, and create a Git tag.
-
-3.  **Publish the Package:** Publish the new version to the npm registry.
-
-    ```bash
-    npm publish
-    ```
-
-4.  **Push Changes to Git:** Push the new version commit and tag to the remote repository.
-
-    ```bash
-    git push
-    git push --tags
-    ```
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored in the repo. It's configured once on npmjs.com, under the package's **Settings → Trusted publishing**: GitHub Actions, repository `Be1newinner/create-express-type`, workflow `release.yml`.

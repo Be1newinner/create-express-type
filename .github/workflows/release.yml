@@ -1,0 +1,83 @@
+name: Release
+
+# Publishes create-express-type to npm. See .github/scripts/next-version.mjs.
+#
+#   patch (x.y.Z): automatic — every push to main that changes src/, packages/
+#                  or package.json runs CI, then publishes the next patch version.
+#   minor (x.Y.0): maintainer approval only — Actions → Release → Run workflow,
+#                  bump = minor. Only the repository owner can start it.
+#   major (X.0.0): never automated.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (minor = your approval to release a new minor version)"
+        type: choice
+        options: [patch, minor]
+        default: patch
+
+permissions:
+  contents: read
+
+# Never run two releases at once; queue them instead
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Publish to npm
+    needs: ci
+    # Manual releases (the only way to get a minor bump) are reserved for the repository owner
+    if: github.event_name == 'push' || github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the version tag and create the GitHub release
+      id-token: write # npm trusted publishing (OIDC) + provenance
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history, to find the commits since the last release
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x # ships npm 11, required for trusted publishing
+          registry-url: https://registry.npmjs.org
+
+      - name: Determine next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: node .github/scripts/next-version.mjs
+
+      - name: Install dependencies
+        if: steps.version.outputs.release == 'true'
+        run: npm ci
+
+      - name: Publish v${{ steps.version.outputs.version }}
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version
+          npm publish --access public
+
+      - name: Tag & create GitHub release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md
