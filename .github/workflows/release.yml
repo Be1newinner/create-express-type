@@ -1,12 +1,15 @@
 name: Release
 
-# Publishes create-express-type to npm. See .github/scripts/next-version.mjs.
+# Stages create-express-type releases on npm. See .github/scripts/next-version.mjs.
 #
 #   patch (x.y.Z): automatic — every push to main that changes src/, packages/
-#                  or package.json runs CI, then publishes the next patch version.
+#                  or package.json runs CI, then stages the next patch version.
 #   minor (x.Y.0): maintainer approval only — Actions → Release → Run workflow,
 #                  bump = minor. Only the repository owner can start it.
 #   major (X.0.0): never automated.
+#
+# Every release is staged (`npm stage publish`), not published: it goes live only
+# after the maintainer approves it on npmjs.com (Staged Packages tab, with 2FA).
 
 on:
   push:
@@ -32,13 +35,13 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   release:
-    name: Publish to npm
+    name: Stage on npm
     needs: ci
     # Manual releases (the only way to get a minor bump) are reserved for the repository owner
     if: github.event_name == 'push' || github.actor == github.repository_owner
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the version tag and create the GitHub release
+      contents: write # push the version tag and create the draft GitHub release
       id-token: write # npm trusted publishing (OIDC) + provenance
 
     steps:
@@ -50,8 +53,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 24.x # ships npm 11, required for trusted publishing
+          node-version: 24.x
           registry-url: https://registry.npmjs.org
+
+      - name: Update npm
+        # npm stage publish needs npm >= 11.15
+        run: npm install -g npm@11
 
       - name: Determine next version
         id: version
@@ -64,15 +71,16 @@ jobs:
         if: steps.version.outputs.release == 'true'
         run: npm ci
 
-      - name: Publish v${{ steps.version.outputs.version }}
+      - name: Stage v${{ steps.version.outputs.version }} on npm
         if: steps.version.outputs.release == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           npm version "$VERSION" --no-git-tag-version
-          npm publish --access public
+          npm stage publish --access public --provenance
 
-      - name: Tag & create GitHub release
+      # The tag marks the version as used, so the next run moves on even before approval
+      - name: Tag & draft GitHub release
         if: steps.version.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,4 +88,21 @@ jobs:
         run: |
           git tag "v$VERSION"
           git push origin "v$VERSION"
-          gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md
+          gh release create "v$VERSION" --draft --title "v$VERSION" --notes-file release-notes.md
+
+      - name: Summary
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "## v$VERSION is staged on npm — waiting for your approval"
+            echo
+            echo "1. Approve it on https://www.npmjs.com/package/create-express-type (Staged Packages tab),"
+            echo "   or run \`npm stage list create-express-type\` then \`npm stage approve <stage-id>\`."
+            echo "2. Optionally publish the draft GitHub release v$VERSION."
+            echo
+            echo "Not shipping it? Reject it (\`npm stage reject <stage-id>\`); the next release moves on to the next version."
+            echo
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"

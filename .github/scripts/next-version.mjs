@@ -10,6 +10,10 @@
  *     by hand with bump = minor.
  *   - major (X.0.0) — never done by automation.
  *
+ * Releases are staged on npm (`npm stage publish`) and tagged vX.Y.Z when staged.
+ * A staged version can't be staged again, so the previous release is the highest of
+ * the version published on npm and the vX.Y.Z git tags (staged, not yet approved).
+ *
  * Env:    BUMP   = patch (default) | minor
  *         MANUAL = true when started by hand (releases even if nothing shipped changed)
  * Writes: $GITHUB_OUTPUT — release (true|false), version, previous, bump
@@ -63,13 +67,27 @@ const setOutputs = (outputs) => {
 
 // ─── Previous release ─────────────────────────────────────────────────────────
 
-const { name } = JSON.parse(readFileSync("package.json", "utf-8"));
-const published = npm("view", name, "version");
+const parseVersion = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number);
+const compareVersions = (a, b) => {
+  const [x, y] = [parseVersion(a), parseVersion(b)];
+  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+};
 
-if (!published) {
+const { name } = JSON.parse(readFileSync("package.json", "utf-8"));
+const npmVersion = npm("view", name, "version");
+
+if (!npmVersion) {
   console.error(`Couldn't read the published version of ${name} from npm.`);
   process.exit(1);
 }
+
+// Tags of releases that were staged — possibly still waiting for approval on npm
+const taggedVersions = git("tag", "--list", "v*")
+  .split("\n")
+  .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag))
+  .map((tag) => tag.slice(1));
+
+const published = [npmVersion, ...taggedVersions].sort(compareVersions).at(-1);
 
 // The commit the previous release was built from: its tag, or the gitHead npm recorded
 const base = isCommit(`v${published}`)
@@ -103,7 +121,7 @@ if (commits.length === 0 && !manual) {
 
 // ─── Next version ─────────────────────────────────────────────────────────────
 
-const [major, minor, patch] = published.split("-")[0].split(".").map(Number);
+const [major, minor, patch] = parseVersion(published);
 const version = bump === "minor" ? `${major}.${minor + 1}.0` : `${major}.${minor}.${patch + 1}`;
 
 writeFileSync(
